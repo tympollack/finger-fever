@@ -16,3 +16,72 @@ body {
   user-select: none;
   -webkit-user-select: none;
 }
+
+@keyframes shockwave-inner {
+  0% {
+    r: 10px;
+    opacity: 1;
+    stroke-width: 4px;
+  }
+  100% {
+    r: 55px;
+    opacity: 0;
+    stroke-width: 1px;
+  }
+}
+
+@keyframes shockwave-mid {
+  0% {
+    r: 18px;
+    opacity: 0.9;
+    stroke-width: 3px;
+  }
+  100% {
+    r: 80px;
+    opacity: 0;
+    stroke-width: 0.8px;
+  }
+}
+
+@keyframes shockwave-outer {
+  0% {
+    r: 26px;
+    opacity: 0.8;
+    stroke-width: 2px;
+  }
+  100% {
+    r: 110px;
+    opacity: 0;
+    stroke-width: 0.5px;
+  }
+}
+
+@keyframes sparkle-burst {
+  0% {
+    transform: rotate(var(--sparkle-rot, 0deg)) translate(0px, 0px) scale(0.2);
+    opacity: 1;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(var(--sparkle-rot, 0deg)) translate(0px, -70px) scale(1.1);
+    opacity: 0;
+  }
+}
+
+.animate-shockwave-inner {
+  animation: shockwave-inner 0.55s cubic-bezier(0.1, 0.8, 0.25, 1) forwards;
+}
+
+.animate-shockwave-mid {
+  animation: shockwave-mid 0.6s cubic-bezier(0.1, 0.8, 0.25, 1) forwards;
+}
+
+.animate-shockwave-outer {
+  animation: shockwave-outer 0.65s cubic-bezier(0.1, 0.8, 0.25, 1) forwards;
+}
+
+.animate-sparkle-burst {
+  animation: sparkle-burst 0.5s ease-out forwards;
+}

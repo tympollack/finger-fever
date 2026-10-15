@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useReducer } from 'rea
 import { TapTarget } from './TapTarget';
 import { ComboMeter, calculateMultiplier } from './ComboMeter';
 import { ScorePanel } from './ScorePanel';
+import { ParticleEmitter, ParticleEmitterHandle } from './ParticleEmitter';
 import { GesturePromptType, HitResult } from '../types';
 
 interface TargetInstance {
@@ -78,6 +79,7 @@ export const ArcadeStage: React.FC = () => {
 
   const totalTimeMs = 45000;
   const stageAreaRef = useRef<HTMLDivElement>(null);
+  const particleEmitterRef = useRef<ParticleEmitterHandle>(null);
   const spawnTimerRef = useRef<number | null>(null);
   const gameClockRef = useRef<number | null>(null);
   const remainingTimeRef = useRef<number>(totalTimeMs);
@@ -96,6 +98,7 @@ export const ArcadeStage: React.FC = () => {
       goodHits: 0,
       misses: 0,
     });
+    particleEmitterRef.current?.clear();
     setIsGameOver(false);
     setIsPlaying(true);
   };
@@ -190,11 +193,23 @@ export const ArcadeStage: React.FC = () => {
       goodHits: prev.goodHits + (result.judgment === 'good' ? 1 : 0),
     }));
 
+    if (result.judgment === 'perfect') {
+      const px = result.x ?? targets.find((t) => t.id === result.targetId)?.x;
+      const py = result.y ?? targets.find((t) => t.id === result.targetId)?.y;
+      if (px !== undefined && py !== undefined) {
+        particleEmitterRef.current?.emitShockwave(
+          px,
+          py,
+          combo >= 34 ? '#f43f5e' : '#38bdf8'
+        );
+      }
+    }
+
     // Fade out target after brief resolution
     setTimeout(() => {
       setTargets((prev) => prev.filter((t) => t.id !== result.targetId));
     }, 250);
-  }, []);
+  }, [targets, combo]);
 
   const handleMiss = useCallback((targetId: string) => {
     dispatchScore({ type: 'MISS' });
@@ -282,6 +297,9 @@ export const ArcadeStage: React.FC = () => {
               onMiss={handleMiss}
             />
           ))}
+
+        {/* Kenney Concentric Shockwave Particle Emitter */}
+        <ParticleEmitter ref={particleEmitterRef} />
 
         {/* Post-Stage Score Summary Panel */}
         {isGameOver && (
