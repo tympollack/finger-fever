@@ -14,6 +14,8 @@ export interface HitResult {
   scoreBonus: number;
   latencyMs: number;
   timestamp: number;
+  x?: number;
+  y?: number;
 }
 
 export interface TapTargetProps {

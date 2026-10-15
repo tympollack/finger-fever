@@ -103,8 +103,10 @@ export const TapTarget: React.FC<TapTargetProps> = ({
       scoreBonus,
       latencyMs: latency,
       timestamp: Date.now(),
+      x,
+      y,
     };
-  }, [id, durationMs, effectiveSpawnTime]);
+  }, [id, durationMs, effectiveSpawnTime, x, y]);
 
   const getEventCoords = (e: React.PointerEvent<HTMLDivElement>) => {
     const native = e.nativeEvent as any;
