@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useReducer } from 'react';
 import { TapTarget } from './TapTarget';
 import { ComboMeter, calculateMultiplier } from './ComboMeter';
 import { ScorePanel } from './ScorePanel';
@@ -11,6 +11,42 @@ interface TargetInstance {
   promptType: GesturePromptType;
   durationMs: number;
   spawnTime: number;
+}
+
+interface ScoreState {
+  score: number;
+  combo: number;
+  maxCombo: number;
+}
+
+type ScoreAction =
+  | { type: 'HIT'; scoreBonus: number }
+  | { type: 'MISS' }
+  | { type: 'RESET' };
+
+function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState {
+  switch (action.type) {
+    case 'HIT': {
+      const nextCombo = state.combo + 1;
+      const mult = calculateMultiplier(nextCombo);
+      return {
+        score: state.score + action.scoreBonus * mult,
+        combo: nextCombo,
+        maxCombo: Math.max(state.maxCombo, nextCombo),
+      };
+    }
+    case 'MISS':
+      return {
+        ...state,
+        combo: 0,
+      };
+    case 'RESET':
+      return {
+        score: 0,
+        combo: 0,
+        maxCombo: 0,
+      };
+  }
 }
 
 const PROMPT_TYPES: GesturePromptType[] = [
@@ -26,9 +62,11 @@ const PROMPT_TYPES: GesturePromptType[] = [
 export const ArcadeStage: React.FC = () => {
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [isGameOver, setIsGameOver] = useState<boolean>(false);
-  const [score, setScore] = useState<number>(0);
-  const [combo, setCombo] = useState<number>(0);
-  const [maxCombo, setMaxCombo] = useState<number>(0);
+  const [{ score, combo, maxCombo }, dispatchScore] = useReducer(scoreReducer, {
+    score: 0,
+    combo: 0,
+    maxCombo: 0,
+  });
   const [remainingTimeMs, setRemainingTimeMs] = useState<number>(45000); // 45s stage
   const [targets, setTargets] = useState<TargetInstance[]>([]);
   const [stats, setStats] = useState({
@@ -42,15 +80,15 @@ export const ArcadeStage: React.FC = () => {
   const stageAreaRef = useRef<HTMLDivElement>(null);
   const spawnTimerRef = useRef<number | null>(null);
   const gameClockRef = useRef<number | null>(null);
+  const remainingTimeRef = useRef<number>(totalTimeMs);
 
   const multiplier = calculateMultiplier(combo);
   const isFeverMode = combo >= 35;
 
   const startGame = () => {
-    setScore(0);
-    setCombo(0);
-    setMaxCombo(0);
+    dispatchScore({ type: 'RESET' });
     setRemainingTimeMs(totalTimeMs);
+    remainingTimeRef.current = totalTimeMs;
     setTargets([]);
     setStats({
       perfectHits: 0,
@@ -74,6 +112,7 @@ export const ArcadeStage: React.FC = () => {
 
       setRemainingTimeMs((prev) => {
         const next = Math.max(prev - delta, 0);
+        remainingTimeRef.current = next;
         if (next <= 0) {
           setIsPlaying(false);
           setIsGameOver(true);
@@ -95,14 +134,28 @@ export const ArcadeStage: React.FC = () => {
     const spawnInterval = isFeverMode ? 650 : 950;
 
     const interval = window.setInterval(() => {
+      const targetDuration = isFeverMode ? 900 : 1200;
+
+      // Do not spawn targets if there isn't enough time left for their scoring window to complete
+      if (remainingTimeRef.current <= targetDuration + 260) {
+        return;
+      }
+
       if (!stageAreaRef.current) return;
       const rect = stageAreaRef.current.getBoundingClientRect();
-      const padding = 70;
-      const usableW = Math.max(rect.width - padding * 2, 200);
-      const usableH = Math.max(rect.height - padding * 2, 200);
+      const targetRadius = 50; // Radius including timing ring boundary
 
-      const spawnX = padding + Math.random() * usableW;
-      const spawnY = padding + Math.random() * usableH;
+      // Derive bounded coordinates so targets never spawn outside small or landscape arenas
+      const spawnX =
+        rect.width <= targetRadius * 2
+          ? rect.width / 2
+          : targetRadius + Math.random() * (rect.width - targetRadius * 2);
+
+      const spawnY =
+        rect.height <= targetRadius * 2
+          ? rect.height / 2
+          : targetRadius + Math.random() * (rect.height - targetRadius * 2);
+
       const randomPrompt =
         PROMPT_TYPES[Math.floor(Math.random() * PROMPT_TYPES.length)];
 
@@ -111,7 +164,7 @@ export const ArcadeStage: React.FC = () => {
         x: spawnX,
         y: spawnY,
         promptType: randomPrompt,
-        durationMs: isFeverMode ? 900 : 1200,
+        durationMs: targetDuration,
         spawnTime: performance.now(),
       };
 
@@ -128,13 +181,7 @@ export const ArcadeStage: React.FC = () => {
       return;
     }
 
-    setCombo((prevCombo) => {
-      const nextCombo = prevCombo + 1;
-      setMaxCombo((prevMax) => Math.max(prevMax, nextCombo));
-      const mult = calculateMultiplier(nextCombo);
-      setScore((prevScore) => prevScore + result.scoreBonus * mult);
-      return nextCombo;
-    });
+    dispatchScore({ type: 'HIT', scoreBonus: result.scoreBonus });
 
     setStats((prev) => ({
       ...prev,
@@ -150,7 +197,7 @@ export const ArcadeStage: React.FC = () => {
   }, []);
 
   const handleMiss = useCallback((targetId: string) => {
-    setCombo(0);
+    dispatchScore({ type: 'MISS' });
     setStats((prev) => ({ ...prev, misses: prev.misses + 1 }));
 
     setTimeout(() => {

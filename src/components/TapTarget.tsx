@@ -9,20 +9,37 @@ export const TapTarget: React.FC<TapTargetProps> = ({
   radius = 44,
   promptType,
   durationMs = 1200,
-  spawnTime = Date.now(),
+  spawnTime,
   onHit,
   onMiss,
   disabled = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const initialSpawnTimeRef = useRef<number>(performance.now());
+  const effectiveSpawnTime = spawnTime ?? initialSpawnTimeRef.current;
+
   const [tapCount, setTapCount] = useState<number>(0);
   const [hitFeedback, setHitFeedback] = useState<HitJudgment | null>(null);
   const [ringScale, setRingScale] = useState<number>(2.5);
   const [isResolved, setIsResolved] = useState<boolean>(false);
 
-  // Gesture tracking for swipe
+  // Gesture tracking for swipe & double tap
   const dragStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const activePointerIdRef = useRef<number | null>(null);
+  const lastTapTimeRef = useRef<number | null>(null);
   const hasTriggeredRef = useRef<boolean>(false);
+
+  const releaseCapture = (el?: HTMLElement | null) => {
+    if (activePointerIdRef.current !== null) {
+      try {
+        const target = el ?? containerRef.current;
+        if (target?.hasPointerCapture?.(activePointerIdRef.current)) {
+          target.releasePointerCapture(activePointerIdRef.current);
+        }
+      } catch (_) {}
+      activePointerIdRef.current = null;
+    }
+  };
 
   // High performance animation loop for shrinking ring
   useEffect(() => {
@@ -31,15 +48,16 @@ export const TapTarget: React.FC<TapTargetProps> = ({
     let animId: number;
     const updateRing = () => {
       const now = performance.now();
-      const elapsed = now - spawnTime;
-      const progress = Math.min(Math.max(elapsed / durationMs, 0), 1.3);
+      const elapsed = now - effectiveSpawnTime;
+      const progress = Math.min(Math.max(elapsed / durationMs, 0), (durationMs + 260) / durationMs);
 
       // Ring shrinks from 2.5x down to 1.0x (perfect target hit size)
-      const currentScale = 2.5 - progress * 1.5;
+      const currentScale = Math.max(2.5 - progress * 1.5, 0.4);
       setRingScale(currentScale);
 
-      // Check for timeout miss
-      if (progress >= 1.25 && !hasTriggeredRef.current) {
+      // Check for timeout miss after full scoring window (duration + 260ms good-hit allowance) expires
+      const maxScoringElapsed = durationMs + 260;
+      if (elapsed > maxScoringElapsed && !hasTriggeredRef.current) {
         hasTriggeredRef.current = true;
         setIsResolved(true);
         setHitFeedback('miss');
@@ -54,11 +72,11 @@ export const TapTarget: React.FC<TapTargetProps> = ({
 
     animId = requestAnimationFrame(updateRing);
     return () => cancelAnimationFrame(animId);
-  }, [id, durationMs, spawnTime, isResolved, disabled, onMiss]);
+  }, [id, durationMs, effectiveSpawnTime, isResolved, disabled, onMiss]);
 
   const evaluateHit = useCallback((): HitResult => {
     const t0 = performance.now();
-    const elapsed = t0 - spawnTime;
+    const elapsed = t0 - effectiveSpawnTime;
     const timeDelta = Math.abs(elapsed - durationMs);
     const latency = performance.now() - t0; // sub-1ms internal processing latency
 
@@ -86,7 +104,7 @@ export const TapTarget: React.FC<TapTargetProps> = ({
       latencyMs: latency,
       timestamp: Date.now(),
     };
-  }, [id, durationMs, spawnTime]);
+  }, [id, durationMs, effectiveSpawnTime]);
 
   const getEventCoords = (e: React.PointerEvent<HTMLDivElement>) => {
     const native = e.nativeEvent as any;
@@ -103,6 +121,13 @@ export const TapTarget: React.FC<TapTargetProps> = ({
     const coords = getEventCoords(e);
     dragStartRef.current = { x: coords.x, y: coords.y, time: performance.now() };
 
+    if (promptType.startsWith('swipe_')) {
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        activePointerIdRef.current = e.pointerId;
+      } catch (_) {}
+    }
+
     if (promptType === 'tap') {
       hasTriggeredRef.current = true;
       const result = evaluateHit();
@@ -110,14 +135,25 @@ export const TapTarget: React.FC<TapTargetProps> = ({
       setHitFeedback(result.judgment);
       onHit(result);
     } else if (promptType === 'double_tap') {
-      const nextCount = tapCount + 1;
-      setTapCount(nextCount);
-      if (nextCount >= 2) {
-        hasTriggeredRef.current = true;
-        const result = evaluateHit();
-        setIsResolved(true);
-        setHitFeedback(result.judgment);
-        onHit(result);
+      const now = performance.now();
+      const doubleTapWindow = 400; // ms maximum interval between taps
+
+      if (tapCount === 0 || lastTapTimeRef.current === null) {
+        lastTapTimeRef.current = now;
+        setTapCount(1);
+      } else {
+        const interval = now - lastTapTimeRef.current;
+        if (interval <= doubleTapWindow) {
+          hasTriggeredRef.current = true;
+          const result = evaluateHit();
+          setIsResolved(true);
+          setHitFeedback(result.judgment);
+          onHit(result);
+        } else {
+          // Gap exceeded gesture deadline, treat as fresh first tap
+          lastTapTimeRef.current = now;
+          setTapCount(1);
+        }
       }
     }
   };
@@ -125,6 +161,7 @@ export const TapTarget: React.FC<TapTargetProps> = ({
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (disabled || isResolved || hasTriggeredRef.current) return;
     if (!dragStartRef.current) return;
+    if (activePointerIdRef.current !== null && e.pointerId !== activePointerIdRef.current) return;
 
     if (promptType.startsWith('swipe_')) {
       const coords = getEventCoords(e);
@@ -144,6 +181,7 @@ export const TapTarget: React.FC<TapTargetProps> = ({
       }
 
       if (swipeDetected) {
+        releaseCapture(e.currentTarget);
         hasTriggeredRef.current = true;
         const result = evaluateHit();
         setIsResolved(true);
@@ -154,7 +192,8 @@ export const TapTarget: React.FC<TapTargetProps> = ({
     }
   };
 
-  const handlePointerUp = () => {
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    releaseCapture(e.currentTarget);
     dragStartRef.current = null;
   };
 
@@ -196,6 +235,7 @@ export const TapTarget: React.FC<TapTargetProps> = ({
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
+      onLostPointerCapture={handlePointerUp}
       style={{
         position: 'absolute',
         left: `${x}px`,
