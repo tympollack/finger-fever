@@ -39,6 +39,22 @@ describe('ParticleEmitter Component', () => {
     expect(instance.getAttribute('style')).toContain('translate(150px, 220px)');
   });
 
+  it('renders radial sparkles with individual --sparkle-rot CSS custom properties', () => {
+    const ref = createRef<ParticleEmitterHandle>();
+    render(<ParticleEmitter ref={ref} poolSize={5} />);
+
+    act(() => {
+      ref.current?.emitShockwave(100, 100);
+    });
+
+    const instance = screen.getByTestId('shockwave-instance-0');
+    const uses = instance.querySelectorAll('use');
+    expect(uses.length).toBe(6);
+
+    const rotations = Array.from(uses).map((u) => u.style.getPropertyValue('--sparkle-rot'));
+    expect(rotations).toEqual(['0deg', '60deg', '120deg', '180deg', '240deg', '300deg']);
+  });
+
   it('automatically disposes particles upon completion back into the pool', () => {
     const ref = createRef<ParticleEmitterHandle>();
     render(<ParticleEmitter ref={ref} poolSize={5} />);
@@ -59,25 +75,57 @@ describe('ParticleEmitter Component', () => {
     expect(screen.queryByTestId('shockwave-instance-0')).not.toBeInTheDocument();
   });
 
-  it('recycles oldest particle slots when pool capacity is exceeded to prevent memory leaks', () => {
+  it('recycles oldest particle slots when pool capacity is exceeded and resets timers safely', () => {
     const ref = createRef<ParticleEmitterHandle>();
-    const poolSize = 3;
+    const poolSize = 1;
     render(<ParticleEmitter ref={ref} poolSize={poolSize} />);
 
+    // First emission at t = 0
     act(() => {
       ref.current?.emitShockwave(10, 10);
-      ref.current?.emitShockwave(20, 20);
-      ref.current?.emitShockwave(30, 30);
     });
+    expect(ref.current?.getActiveCount()).toBe(1);
 
-    expect(ref.current?.getActiveCount()).toBe(3);
-
-    // Emitting a 4th shockwave recycles an existing slot without growing array
+    // Advance 300ms
     act(() => {
-      ref.current?.emitShockwave(40, 40);
+      vi.advanceTimersByTime(300);
     });
 
-    expect(ref.current?.getActiveCount()).toBe(3);
-    expect(ref.current?.getPoolSize()).toBe(3);
+    // Re-use slot with second emission at t = 300ms
+    act(() => {
+      ref.current?.emitShockwave(50, 50);
+    });
+    expect(ref.current?.getActiveCount()).toBe(1);
+
+    // Advance by 400ms (t = 700ms total). The first timer (scheduled for 650ms) must NOT
+    // prematurely cancel the second emission which only started at 300ms (needs to run until 950ms)
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(ref.current?.getActiveCount()).toBe(1);
+
+    // Advance another 300ms (t = 1000ms total). Second emission should now be expired.
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(ref.current?.getActiveCount()).toBe(0);
+  });
+
+  it('clears active particles and cancels pending timers on clear()', () => {
+    const ref = createRef<ParticleEmitterHandle>();
+    render(<ParticleEmitter ref={ref} poolSize={5} />);
+
+    act(() => {
+      ref.current?.emitShockwave(100, 100);
+      ref.current?.emitShockwave(200, 200);
+    });
+
+    expect(ref.current?.getActiveCount()).toBe(2);
+
+    act(() => {
+      ref.current?.clear();
+    });
+
+    expect(ref.current?.getActiveCount()).toBe(0);
   });
 });
