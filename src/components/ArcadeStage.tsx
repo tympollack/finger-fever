@@ -83,14 +83,66 @@ export const ArcadeStage: React.FC = () => {
   const spawnTimerRef = useRef<number | null>(null);
   const gameClockRef = useRef<number | null>(null);
   const remainingTimeRef = useRef<number>(totalTimeMs);
+  const targetsRef = useRef<TargetInstance[]>(targets);
+  targetsRef.current = targets;
+  const handledTargetIdsRef = useRef<Set<string>>(new Set());
 
   const multiplier = calculateMultiplier(combo);
   const isFeverMode = combo >= 35;
+
+  const handleMiss = useCallback((targetId: string) => {
+    if (handledTargetIdsRef.current.has(targetId)) return;
+    handledTargetIdsRef.current.add(targetId);
+
+    dispatchScore({ type: 'MISS' });
+    setStats((prev) => ({ ...prev, misses: prev.misses + 1 }));
+
+    setTimeout(() => {
+      setTargets((prev) => prev.filter((t) => t.id !== targetId));
+    }, 250);
+  }, []);
+
+  const handleHit = useCallback((result: HitResult) => {
+    if (handledTargetIdsRef.current.has(result.targetId)) return;
+    handledTargetIdsRef.current.add(result.targetId);
+
+    if (result.judgment === 'miss') {
+      handleMiss(result.targetId);
+      return;
+    }
+
+    dispatchScore({ type: 'HIT', scoreBonus: result.scoreBonus });
+
+    setStats((prev) => ({
+      ...prev,
+      perfectHits: prev.perfectHits + (result.judgment === 'perfect' ? 1 : 0),
+      greatHits: prev.greatHits + (result.judgment === 'great' ? 1 : 0),
+      goodHits: prev.goodHits + (result.judgment === 'good' ? 1 : 0),
+    }));
+
+    if (result.judgment === 'perfect') {
+      const px = result.x ?? targetsRef.current.find((t) => t.id === result.targetId)?.x;
+      const py = result.y ?? targetsRef.current.find((t) => t.id === result.targetId)?.y;
+      if (px !== undefined && py !== undefined) {
+        particleEmitterRef.current?.emitShockwave(
+          px,
+          py,
+          combo >= 34 ? '#f43f5e' : '#38bdf8'
+        );
+      }
+    }
+
+    // Fade out target after brief resolution
+    setTimeout(() => {
+      setTargets((prev) => prev.filter((t) => t.id !== result.targetId));
+    }, 250);
+  }, [combo, handleMiss]);
 
   const startGame = () => {
     dispatchScore({ type: 'RESET' });
     setRemainingTimeMs(totalTimeMs);
     remainingTimeRef.current = totalTimeMs;
+    handledTargetIdsRef.current.clear();
     setTargets([]);
     setStats({
       perfectHits: 0,
@@ -113,10 +165,23 @@ export const ArcadeStage: React.FC = () => {
       const delta = now - lastTime;
       lastTime = now;
 
+      // Settle any expired targets independently of animation frames (e.g. background tab)
+      targetsRef.current.forEach((t) => {
+        if (now - t.spawnTime > t.durationMs + 260 && !handledTargetIdsRef.current.has(t.id)) {
+          handleMiss(t.id);
+        }
+      });
+
       setRemainingTimeMs((prev) => {
         const next = Math.max(prev - delta, 0);
         remainingTimeRef.current = next;
         if (next <= 0) {
+          // If stage ends, settle any remaining unresolved targets as misses
+          targetsRef.current.forEach((t) => {
+            if (!handledTargetIdsRef.current.has(t.id)) {
+              handleMiss(t.id);
+            }
+          });
           setIsPlaying(false);
           setIsGameOver(true);
           clearInterval(interval);
@@ -127,7 +192,7 @@ export const ArcadeStage: React.FC = () => {
 
     gameClockRef.current = interval;
     return () => clearInterval(interval);
-  }, [isPlaying, isGameOver]);
+  }, [isPlaying, isGameOver, handleMiss]);
 
   // Target spawner loop
   useEffect(() => {
@@ -147,17 +212,42 @@ export const ArcadeStage: React.FC = () => {
       if (!stageAreaRef.current) return;
       const rect = stageAreaRef.current.getBoundingClientRect();
       const targetRadius = 50; // Radius including timing ring boundary
+      const minDistance = targetRadius * 2; // Enforce non-overlapping interactive regions
 
-      // Derive bounded coordinates so targets never spawn outside small or landscape arenas
-      const spawnX =
-        rect.width <= targetRadius * 2
-          ? rect.width / 2
-          : targetRadius + Math.random() * (rect.width - targetRadius * 2);
+      // Derive bounded coordinates with spacing check so targets do not overlap active ones
+      let spawnX = rect.width <= targetRadius * 2 ? rect.width / 2 : targetRadius + Math.random() * (rect.width - targetRadius * 2);
+      let spawnY = rect.height <= targetRadius * 2 ? rect.height / 2 : targetRadius + Math.random() * (rect.height - targetRadius * 2);
+      let foundCoordinates = false;
 
-      const spawnY =
-        rect.height <= targetRadius * 2
-          ? rect.height / 2
-          : targetRadius + Math.random() * (rect.height - targetRadius * 2);
+      for (let attempt = 0; attempt < 15; attempt++) {
+        const candidateX =
+          rect.width <= targetRadius * 2
+            ? rect.width / 2
+            : targetRadius + Math.random() * (rect.width - targetRadius * 2);
+
+        const candidateY =
+          rect.height <= targetRadius * 2
+            ? rect.height / 2
+            : targetRadius + Math.random() * (rect.height - targetRadius * 2);
+
+        const hasOverlap = targetsRef.current.some((t) => {
+          const dx = t.x - candidateX;
+          const dy = t.y - candidateY;
+          return Math.sqrt(dx * dx + dy * dy) < minDistance;
+        });
+
+        if (!hasOverlap) {
+          spawnX = candidateX;
+          spawnY = candidateY;
+          foundCoordinates = true;
+          break;
+        }
+      }
+
+      // If arena is too crowded and couldn't find a free position, delay spawn to next interval
+      if (!foundCoordinates && targetsRef.current.length > 0) {
+        return;
+      }
 
       const randomPrompt =
         PROMPT_TYPES[Math.floor(Math.random() * PROMPT_TYPES.length)];
@@ -177,48 +267,6 @@ export const ArcadeStage: React.FC = () => {
     spawnTimerRef.current = interval;
     return () => clearInterval(interval);
   }, [isPlaying, isGameOver, isFeverMode]);
-
-  const handleHit = useCallback((result: HitResult) => {
-    if (result.judgment === 'miss') {
-      handleMiss(result.targetId);
-      return;
-    }
-
-    dispatchScore({ type: 'HIT', scoreBonus: result.scoreBonus });
-
-    setStats((prev) => ({
-      ...prev,
-      perfectHits: prev.perfectHits + (result.judgment === 'perfect' ? 1 : 0),
-      greatHits: prev.greatHits + (result.judgment === 'great' ? 1 : 0),
-      goodHits: prev.goodHits + (result.judgment === 'good' ? 1 : 0),
-    }));
-
-    if (result.judgment === 'perfect') {
-      const px = result.x ?? targets.find((t) => t.id === result.targetId)?.x;
-      const py = result.y ?? targets.find((t) => t.id === result.targetId)?.y;
-      if (px !== undefined && py !== undefined) {
-        particleEmitterRef.current?.emitShockwave(
-          px,
-          py,
-          combo >= 34 ? '#f43f5e' : '#38bdf8'
-        );
-      }
-    }
-
-    // Fade out target after brief resolution
-    setTimeout(() => {
-      setTargets((prev) => prev.filter((t) => t.id !== result.targetId));
-    }, 250);
-  }, [targets, combo]);
-
-  const handleMiss = useCallback((targetId: string) => {
-    dispatchScore({ type: 'MISS' });
-    setStats((prev) => ({ ...prev, misses: prev.misses + 1 }));
-
-    setTimeout(() => {
-      setTargets((prev) => prev.filter((t) => t.id !== targetId));
-    }, 250);
-  }, []);
 
   return (
     <div

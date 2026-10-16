@@ -71,7 +71,27 @@ export const TapTarget: React.FC<TapTargetProps> = ({
     };
 
     animId = requestAnimationFrame(updateRing);
-    return () => cancelAnimationFrame(animId);
+
+    // Fallback timer: ensures miss is counted even if RAF is suspended when tab is in background
+    const timeoutDuration = Math.max(
+      0,
+      durationMs + 260 - (performance.now() - effectiveSpawnTime)
+    );
+    const fallbackTimer = window.setTimeout(() => {
+      if (!hasTriggeredRef.current) {
+        hasTriggeredRef.current = true;
+        setIsResolved(true);
+        setHitFeedback('miss');
+        if (onMiss) {
+          onMiss(id);
+        }
+      }
+    }, timeoutDuration);
+
+    return () => {
+      cancelAnimationFrame(animId);
+      window.clearTimeout(fallbackTimer);
+    };
   }, [id, durationMs, effectiveSpawnTime, isResolved, disabled, onMiss]);
 
   const evaluateHit = useCallback((): HitResult => {
@@ -108,6 +128,51 @@ export const TapTarget: React.FC<TapTargetProps> = ({
     };
   }, [id, durationMs, effectiveSpawnTime, x, y]);
 
+  const triggerHitGesture = useCallback(() => {
+    if (disabled || isResolved || hasTriggeredRef.current) return;
+    hasTriggeredRef.current = true;
+    const result = evaluateHit();
+    setIsResolved(true);
+    setHitFeedback(result.judgment);
+    onHit(result);
+  }, [disabled, isResolved, evaluateHit, onHit]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (disabled || isResolved || hasTriggeredRef.current) return;
+
+    if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault();
+      if (promptType === 'tap') {
+        triggerHitGesture();
+      } else if (promptType === 'double_tap') {
+        const now = performance.now();
+        const doubleTapWindow = 400; // ms maximum interval between taps
+
+        if (tapCount === 0 || lastTapTimeRef.current === null) {
+          lastTapTimeRef.current = now;
+          setTapCount(1);
+        } else {
+          const interval = now - lastTapTimeRef.current;
+          if (interval <= doubleTapWindow) {
+            triggerHitGesture();
+          } else {
+            // Gap exceeded gesture deadline, treat as fresh first tap
+            lastTapTimeRef.current = now;
+            setTapCount(1);
+          }
+        }
+      }
+    } else if (
+      (e.key === 'ArrowLeft' && promptType === 'swipe_left') ||
+      (e.key === 'ArrowRight' && promptType === 'swipe_right') ||
+      (e.key === 'ArrowUp' && promptType === 'swipe_up') ||
+      (e.key === 'ArrowDown' && promptType === 'swipe_down')
+    ) {
+      e.preventDefault();
+      triggerHitGesture();
+    }
+  };
+
   const getEventCoords = (e: React.PointerEvent<HTMLDivElement>) => {
     const native = e.nativeEvent as any;
     const clientX = e.clientX ?? native?.clientX ?? 0;
@@ -131,11 +196,7 @@ export const TapTarget: React.FC<TapTargetProps> = ({
     }
 
     if (promptType === 'tap') {
-      hasTriggeredRef.current = true;
-      const result = evaluateHit();
-      setIsResolved(true);
-      setHitFeedback(result.judgment);
-      onHit(result);
+      triggerHitGesture();
     } else if (promptType === 'double_tap') {
       const now = performance.now();
       const doubleTapWindow = 400; // ms maximum interval between taps
@@ -146,11 +207,7 @@ export const TapTarget: React.FC<TapTargetProps> = ({
       } else {
         const interval = now - lastTapTimeRef.current;
         if (interval <= doubleTapWindow) {
-          hasTriggeredRef.current = true;
-          const result = evaluateHit();
-          setIsResolved(true);
-          setHitFeedback(result.judgment);
-          onHit(result);
+          triggerHitGesture();
         } else {
           // Gap exceeded gesture deadline, treat as fresh first tap
           lastTapTimeRef.current = now;
@@ -233,6 +290,7 @@ export const TapTarget: React.FC<TapTargetProps> = ({
       data-testid={`tap-target-${id}`}
       data-prompt-type={promptType}
       data-resolved={isResolved}
+      onKeyDown={handleKeyDown}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}

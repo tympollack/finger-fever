@@ -41,11 +41,11 @@ export const ScorePanel: React.FC<ScorePanelProps> = ({
 
   return (
     <div
-      className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md"
+      className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md overflow-y-auto"
       data-testid="score-panel"
     >
       <div
-        className="w-full max-w-md p-6 rounded-2xl bg-slate-900 border-4 border-slate-700 shadow-2xl text-center"
+        className="w-full max-w-md max-h-full overflow-y-auto p-6 rounded-2xl bg-slate-900 border-4 border-slate-700 shadow-2xl text-center my-auto"
         style={{
           boxShadow: '0 0 30px rgba(0,0,0,0.8), inset 0 2px 4px rgba(255,255,255,0.1)',
         }}
