@@ -85,6 +85,36 @@ describe('TapTarget Component', () => {
     expect(handleHit).toHaveBeenCalledTimes(1);
   });
 
+  it('ignores auto-repeat keydown events for double-tap targets', () => {
+    const handleHit = vi.fn();
+    render(
+      <TapTarget
+        id="target-keyboard-repeat"
+        x={100}
+        y={100}
+        promptType="double_tap"
+        durationMs={1000}
+        spawnTime={performance.now()}
+        onHit={handleHit}
+      />
+    );
+
+    const targetEl = screen.getByTestId('tap-target-target-keyboard-repeat');
+    // First press
+    fireEvent.keyDown(targetEl, { key: ' ', repeat: false });
+    expect(screen.getByTestId('tap-counter')).toHaveTextContent('1/2');
+    expect(handleHit).not.toHaveBeenCalled();
+
+    // Auto-repeat held keydown event — must be ignored!
+    fireEvent.keyDown(targetEl, { key: ' ', repeat: true });
+    expect(screen.getByTestId('tap-counter')).toHaveTextContent('1/2');
+    expect(handleHit).not.toHaveBeenCalled();
+
+    // Second distinct key press — completes gesture
+    fireEvent.keyDown(targetEl, { key: ' ', repeat: false });
+    expect(handleHit).toHaveBeenCalledTimes(1);
+  });
+
   it('handles double-tap prompt requiring two sequential taps', () => {
     const handleHit = vi.fn();
     render(

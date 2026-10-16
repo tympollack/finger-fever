@@ -138,7 +138,7 @@ export const TapTarget: React.FC<TapTargetProps> = ({
   }, [disabled, isResolved, evaluateHit, onHit]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (disabled || isResolved || hasTriggeredRef.current) return;
+    if (disabled || isResolved || hasTriggeredRef.current || e.repeat) return;
 
     if (e.key === ' ' || e.key === 'Enter') {
       e.preventDefault();

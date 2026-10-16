@@ -104,12 +104,13 @@ export const ArcadeStage: React.FC = () => {
 
   const handleHit = useCallback((result: HitResult) => {
     if (handledTargetIdsRef.current.has(result.targetId)) return;
-    handledTargetIdsRef.current.add(result.targetId);
 
     if (result.judgment === 'miss') {
       handleMiss(result.targetId);
       return;
     }
+
+    handledTargetIdsRef.current.add(result.targetId);
 
     dispatchScore({ type: 'HIT', scoreBonus: result.scoreBonus });
 
