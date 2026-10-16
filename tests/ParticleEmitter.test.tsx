@@ -128,4 +128,23 @@ describe('ParticleEmitter Component', () => {
 
     expect(ref.current?.getActiveCount()).toBe(0);
   });
+
+  it('handles batched emissions in the same act() tick and expires both slots independently', () => {
+    const ref = createRef<ParticleEmitterHandle>();
+    render(<ParticleEmitter ref={ref} poolSize={5} />);
+
+    act(() => {
+      // Both emitted in the same batch
+      ref.current?.emitShockwave(100, 100);
+      ref.current?.emitShockwave(200, 200);
+    });
+
+    expect(ref.current?.getActiveCount()).toBe(2);
+
+    act(() => {
+      vi.advanceTimersByTime(700);
+    });
+
+    expect(ref.current?.getActiveCount()).toBe(0);
+  });
 });

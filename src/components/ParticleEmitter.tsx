@@ -59,63 +59,56 @@ export const ParticleEmitter = forwardRef<ParticleEmitterHandle, ParticleEmitter
 
     const emitShockwave = useCallback(
       (x: number, y: number, color = '#38bdf8') => {
-        let assignedSlot = -1;
-        let newGen = 0;
+        const currentParticles = particlesRef.current;
+        const now = performance.now();
 
-        setParticles((prev) => {
-          const now = performance.now();
-          // Find first inactive slot
-          let slotIndex = prev.findIndex((p) => !p.active);
+        // Synchronously find first inactive slot or recycle oldest
+        let slotIndex = currentParticles.findIndex((p) => !p.active);
+        if (slotIndex === -1) {
+          let oldestTime = Infinity;
+          slotIndex = 0;
+          currentParticles.forEach((p, idx) => {
+            if (p.createdAt < oldestTime) {
+              oldestTime = p.createdAt;
+              slotIndex = idx;
+            }
+          });
+        }
 
-          // If pool exhausted, recycle the oldest slot to prevent unbounded memory growth
-          if (slotIndex === -1) {
-            let oldestTime = Infinity;
-            slotIndex = 0;
-            prev.forEach((p, idx) => {
-              if (p.createdAt < oldestTime) {
-                oldestTime = p.createdAt;
-                slotIndex = idx;
-              }
-            });
-          }
+        const newGen = currentParticles[slotIndex].generation + 1;
+        const next = [...currentParticles];
+        next[slotIndex] = {
+          id: currentParticles[slotIndex].id,
+          generation: newGen,
+          active: true,
+          x,
+          y,
+          color,
+          createdAt: now,
+        };
 
-          assignedSlot = slotIndex;
-          newGen = prev[slotIndex].generation + 1;
-
-          const next = [...prev];
-          next[slotIndex] = {
-            id: prev[slotIndex].id,
-            generation: newGen,
-            active: true,
-            x,
-            y,
-            color,
-            createdAt: now,
-          };
-          return next;
-        });
+        // Commit immediately to ref and state
+        particlesRef.current = next;
+        setParticles(next);
 
         // Cancel existing scheduled timer for this recycled slot
-        const existingTimer = timersRef.current.get(assignedSlot);
+        const existingTimer = timersRef.current.get(slotIndex);
         if (existingTimer !== undefined) {
           window.clearTimeout(existingTimer);
         }
 
         // Automatically dispose and return to pool upon animation completion
         const timerId = window.setTimeout(() => {
-          timersRef.current.delete(assignedSlot);
-          setParticles((prev) => {
-            // Only deactivate if generation matches (has not been recycled again)
-            if (prev[assignedSlot]?.generation === newGen) {
-              const next = [...prev];
-              next[assignedSlot] = { ...prev[assignedSlot], active: false };
-              return next;
-            }
-            return prev;
-          });
+          timersRef.current.delete(slotIndex);
+          if (particlesRef.current[slotIndex]?.generation === newGen) {
+            const updated = [...particlesRef.current];
+            updated[slotIndex] = { ...updated[slotIndex], active: false };
+            particlesRef.current = updated;
+            setParticles(updated);
+          }
         }, SHOCKWAVE_DURATION_MS);
 
-        timersRef.current.set(assignedSlot, timerId);
+        timersRef.current.set(slotIndex, timerId);
       },
       []
     );
@@ -124,7 +117,9 @@ export const ParticleEmitter = forwardRef<ParticleEmitterHandle, ParticleEmitter
       // Cancel all active timers
       timersRef.current.forEach((timerId) => window.clearTimeout(timerId));
       timersRef.current.clear();
-      setParticles((prev) => prev.map((p) => ({ ...p, active: false })));
+      const cleared = particlesRef.current.map((p) => ({ ...p, active: false }));
+      particlesRef.current = cleared;
+      setParticles(cleared);
     }, []);
 
     useImperativeHandle(
