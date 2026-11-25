@@ -1,5 +1,6 @@
 import React from 'react';
 import { GesturePromptType } from '../types';
+import { resolvePromptSpriteAsset } from './assetManifest';
 
 export interface PromptIconProps {
   type: GesturePromptType;
@@ -14,6 +15,8 @@ export const KenneyPromptIcon: React.FC<PromptIconProps> = ({
   className = '',
   color = '#ffffff',
 }) => {
+  const asset = resolvePromptSpriteAsset(type);
+
   switch (type) {
     case 'tap':
       return (
@@ -25,6 +28,8 @@ export const KenneyPromptIcon: React.FC<PromptIconProps> = ({
           xmlns="http://www.w3.org/2000/svg"
           className={className}
           data-testid="kenney-prompt-tap"
+          data-asset-key={asset.spriteKey}
+          data-cdn-url={asset.cdnUrl}
         >
           {/* Kenney Input Prompt - Touch Tap */}
           <circle cx="24" cy="24" r="20" fill="#1e293b" stroke={color} strokeWidth="3" />

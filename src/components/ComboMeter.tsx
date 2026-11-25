@@ -1,5 +1,9 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { ComboMeterProps } from '../types';
+import {
+  resolveCountdownMeterAssets,
+  subscribeFeverAssetSwaps,
+} from '../assets/assetManifest';
 
 export const calculateMultiplier = (combo: number): number => {
   if (combo >= 35) return 5;
@@ -79,6 +83,18 @@ export const ComboMeter: React.FC<ComboMeterProps> = ({
     };
   };
 
+  const [, setSwapTick] = useState(0);
+  useEffect(
+    () =>
+      subscribeFeverAssetSwaps((event) => {
+        if (event.type !== 'catalog_loaded') {
+          setSwapTick((n) => n + 1);
+        }
+      }),
+    [],
+  );
+
+  const meterAssets = resolveCountdownMeterAssets();
   const theme = getMultiplierTheme();
 
   return (
@@ -144,6 +160,8 @@ export const ComboMeter: React.FC<ComboMeterProps> = ({
           boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.6)',
         }}
         data-testid="timer-gauge-container"
+        data-cdn-atlas={meterAssets.bg.atlasUrl}
+        data-meter-bg-url={meterAssets.bg.cdnUrl}
       >
         <div
           className="h-full rounded-sm transition-all duration-100 ease-linear"
@@ -153,6 +171,7 @@ export const ComboMeter: React.FC<ComboMeterProps> = ({
             boxShadow: `0 0 10px ${getTimerBarColor()}aa`,
           }}
           data-testid="timer-gauge-bar"
+          data-meter-fill-url={meterAssets.fill.cdnUrl}
         />
         {/* Kenney meter segment grid marks */}
         <div className="absolute inset-0 flex justify-between pointer-events-none px-2 opacity-30">

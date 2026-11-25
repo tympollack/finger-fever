@@ -6,6 +6,7 @@ import {
   forwardRef,
   CSSProperties,
 } from 'react';
+import { resolveParticleSparkAsset } from '../assets/assetManifest';
 
 export interface ShockwaveParticle {
   id: number;
@@ -133,10 +134,14 @@ export const ParticleEmitter = forwardRef<ParticleEmitterHandle, ParticleEmitter
       [emitShockwave, clear]
     );
 
+    const sparkAsset = resolveParticleSparkAsset();
+
     return (
       <div
         className="absolute inset-0 pointer-events-none overflow-hidden z-25"
         data-testid="particle-emitter"
+        data-fx-key={sparkAsset.assetKey}
+        data-fx-cdn-url={sparkAsset.cdnUrl}
       >
         <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
           <defs>
