@@ -32,13 +32,14 @@ export const PROMPT_UI_SPRITE_MAP: Record<GesturePromptType, UiSpriteKey> = {
 };
 
 let hydrated = false;
+let cachedCatalog: CatalogAsset[] | null = null;
 
 export async function hydrateFingerFeverCatalog(
   supabaseClient?: SupabaseClientLike,
   force = false,
 ): Promise<CatalogAsset[]> {
-  if (hydrated && !force && !supabaseClient) {
-    return loadCatalogAssets({ app_scope: FEVER_APP_SCOPE, fallbackToSeed: true });
+  if (hydrated && !force && !supabaseClient && cachedCatalog) {
+    return cachedCatalog;
   }
   const assets = await loadCatalogAssets({
     app_scope: FEVER_APP_SCOPE,
@@ -46,12 +47,14 @@ export async function hydrateFingerFeverCatalog(
     fallbackToSeed: true,
   });
   assetRegistry.loadCatalog(assets, FEVER_APP_SCOPE);
+  cachedCatalog = assets;
   hydrated = true;
   return assets;
 }
 
 export function resetFeverAssetHydrationForTest(): void {
   hydrated = false;
+  cachedCatalog = null;
 }
 
 export function resolveUiSpriteAsset(spriteKey: UiSpriteKey): FeverResolvedAsset {

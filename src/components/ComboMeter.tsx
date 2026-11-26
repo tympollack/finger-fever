@@ -84,12 +84,14 @@ export const ComboMeter: React.FC<ComboMeterProps> = ({
   };
 
   const [, setSwapTick] = useState(0);
+  const [failedBgUrl, setFailedBgUrl] = useState<string | null>(null);
+  const [failedFillUrl, setFailedFillUrl] = useState<string | null>(null);
+  const [failedPanelUrl, setFailedPanelUrl] = useState<string | null>(null);
+
   useEffect(
     () =>
-      subscribeFeverAssetSwaps((event) => {
-        if (event.type !== 'catalog_loaded') {
-          setSwapTick((n) => n + 1);
-        }
+      subscribeFeverAssetSwaps(() => {
+        setSwapTick((n) => n + 1);
       }),
     [],
   );
@@ -99,9 +101,20 @@ export const ComboMeter: React.FC<ComboMeterProps> = ({
 
   return (
     <div
-      className="w-full max-w-xl mx-auto p-3 select-none"
+      className="w-full max-w-xl mx-auto p-3 select-none relative"
       data-testid="combo-meter"
     >
+      {failedPanelUrl !== meterAssets.panel.cdnUrl && (
+        <img
+          src={meterAssets.panel.cdnUrl}
+          alt=""
+          aria-hidden="true"
+          crossOrigin="anonymous"
+          data-testid="combo-meter-panel-img"
+          className="absolute inset-0 w-full h-full object-fill opacity-20 pointer-events-none rounded-lg"
+          onError={() => setFailedPanelUrl(meterAssets.panel.cdnUrl)}
+        />
+      )}
       {/* Top Header: Score & Timer */}
       <div className="flex items-center justify-between mb-2 px-1">
         {/* Score Display */}
@@ -163,8 +176,19 @@ export const ComboMeter: React.FC<ComboMeterProps> = ({
         data-cdn-atlas={meterAssets.bg.atlasUrl}
         data-meter-bg-url={meterAssets.bg.cdnUrl}
       >
+        {failedBgUrl !== meterAssets.bg.cdnUrl && (
+          <img
+            src={meterAssets.bg.cdnUrl}
+            alt=""
+            aria-hidden="true"
+            crossOrigin="anonymous"
+            data-testid="timer-gauge-bg-img"
+            className="absolute inset-0 w-full h-full object-fill opacity-75 pointer-events-none"
+            onError={() => setFailedBgUrl(meterAssets.bg.cdnUrl)}
+          />
+        )}
         <div
-          className="h-full rounded-sm transition-all duration-100 ease-linear"
+          className="h-full rounded-sm transition-all duration-100 ease-linear relative overflow-hidden"
           style={{
             width: `${timeProgress * 100}%`,
             backgroundColor: getTimerBarColor(),
@@ -172,7 +196,19 @@ export const ComboMeter: React.FC<ComboMeterProps> = ({
           }}
           data-testid="timer-gauge-bar"
           data-meter-fill-url={meterAssets.fill.cdnUrl}
-        />
+        >
+          {failedFillUrl !== meterAssets.fill.cdnUrl && (
+            <img
+              src={meterAssets.fill.cdnUrl}
+              alt=""
+              aria-hidden="true"
+              crossOrigin="anonymous"
+              data-testid="timer-gauge-fill-img"
+              className="w-full h-full object-fill pointer-events-none"
+              onError={() => setFailedFillUrl(meterAssets.fill.cdnUrl)}
+            />
+          )}
+        </div>
         {/* Kenney meter segment grid marks */}
         <div className="absolute inset-0 flex justify-between pointer-events-none px-2 opacity-30">
           {[...Array(9)].map((_, i) => (

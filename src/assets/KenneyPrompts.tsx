@@ -1,6 +1,9 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { GesturePromptType } from '../types';
-import { resolvePromptSpriteAsset } from './assetManifest';
+import {
+  resolvePromptSpriteAsset,
+  subscribeFeverAssetSwaps,
+} from './assetManifest';
 
 export interface PromptIconProps {
   type: GesturePromptType;
@@ -9,13 +12,55 @@ export interface PromptIconProps {
   color?: string;
 }
 
+const PROMPT_TEST_ID_MAP: Record<GesturePromptType, string> = {
+  tap: 'kenney-prompt-tap',
+  double_tap: 'kenney-prompt-double-tap',
+  swipe_left: 'kenney-prompt-swipe-left',
+  swipe_right: 'kenney-prompt-swipe-right',
+  swipe_up: 'kenney-prompt-swipe-up',
+  swipe_down: 'kenney-prompt-swipe-down',
+};
+
 export const KenneyPromptIcon: React.FC<PromptIconProps> = ({
   type,
   size = 36,
   className = '',
   color = '#ffffff',
 }) => {
+  const [, setSwapTick] = useState(0);
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    return subscribeFeverAssetSwaps(() => {
+      setSwapTick((n) => n + 1);
+    });
+  }, []);
+
   const asset = resolvePromptSpriteAsset(type);
+  const showCdnImage = Boolean(asset.cdnUrl) && failedUrl !== asset.cdnUrl;
+
+  if (showCdnImage) {
+    return (
+      <span
+        className={`inline-flex items-center justify-center ${className}`}
+        style={{ width: size, height: size }}
+        data-testid={PROMPT_TEST_ID_MAP[type]}
+        data-asset-key={asset.spriteKey}
+        data-cdn-url={asset.cdnUrl}
+      >
+        <img
+          src={asset.cdnUrl}
+          alt={type}
+          width={size}
+          height={size}
+          crossOrigin="anonymous"
+          data-testid={`kenney-prompt-img-${type}`}
+          style={{ width: size, height: size, objectFit: 'contain' }}
+          onError={() => setFailedUrl(asset.cdnUrl)}
+        />
+      </span>
+    );
+  }
 
   switch (type) {
     case 'tap':

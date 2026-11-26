@@ -1,12 +1,16 @@
 import {
   useState,
+  useEffect,
   useRef,
   useCallback,
   useImperativeHandle,
   forwardRef,
   CSSProperties,
 } from 'react';
-import { resolveParticleSparkAsset } from '../assets/assetManifest';
+import {
+  resolveParticleSparkAsset,
+  subscribeFeverAssetSwaps,
+} from '../assets/assetManifest';
 
 export interface ShockwaveParticle {
   id: number;
@@ -134,7 +138,19 @@ export const ParticleEmitter = forwardRef<ParticleEmitterHandle, ParticleEmitter
       [emitShockwave, clear]
     );
 
+    const [, setSwapTick] = useState(0);
+    const [failedSparkUrl, setFailedSparkUrl] = useState<string | null>(null);
+
+    useEffect(
+      () =>
+        subscribeFeverAssetSwaps(() => {
+          setSwapTick((n) => n + 1);
+        }),
+      [],
+    );
+
     const sparkAsset = resolveParticleSparkAsset();
+    const useCdnSpark = Boolean(sparkAsset.cdnUrl) && failedSparkUrl !== sparkAsset.cdnUrl;
 
     return (
       <div
@@ -145,7 +161,7 @@ export const ParticleEmitter = forwardRef<ParticleEmitterHandle, ParticleEmitter
       >
         <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
           <defs>
-            {/* Kenney Particle Pack Sparkle Texture */}
+            {/* Kenney Particle Pack Sparkle Texture fallback */}
             <g id="kenney-sparkle-star">
               <path
                 d="M 0 -14 Q 2 -3 14 0 Q 3 2 0 14 Q -2 3 -14 0 Q -3 -2 0 -14 Z"
@@ -201,7 +217,7 @@ export const ParticleEmitter = forwardRef<ParticleEmitterHandle, ParticleEmitter
                   className="animate-shockwave-outer"
                 />
 
-                {/* Kenney Radial Sparkle Bursts (Dispersing outward with dedicated --sparkle-rot) */}
+                {/* Kenney Radial Sparkle Bursts */}
                 {[0, 60, 120, 180, 240, 300].map((deg) => (
                   <use
                     key={deg}
@@ -211,6 +227,7 @@ export const ParticleEmitter = forwardRef<ParticleEmitterHandle, ParticleEmitter
                       {
                         '--sparkle-rot': `${deg}deg`,
                         transformOrigin: '0 0',
+                        opacity: useCdnSpark ? 0.35 : 1,
                       } as CSSProperties
                     }
                   />
@@ -219,6 +236,23 @@ export const ParticleEmitter = forwardRef<ParticleEmitterHandle, ParticleEmitter
             );
           })}
         </svg>
+
+        {useCdnSpark &&
+          particles
+            .filter((p) => p.active)
+            .map((p) => (
+              <img
+                key={`spark-${p.id}-${p.generation}`}
+                src={sparkAsset.cdnUrl}
+                alt=""
+                aria-hidden="true"
+                crossOrigin="anonymous"
+                data-testid={`particle-spark-img-${p.id}`}
+                className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 w-9 h-9 animate-ping"
+                style={{ left: `${p.x}px`, top: `${p.y}px` }}
+                onError={() => setFailedSparkUrl(sparkAsset.cdnUrl)}
+              />
+            ))}
       </div>
     );
   }

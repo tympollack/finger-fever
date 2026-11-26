@@ -76,4 +76,37 @@ describe('TASK-PKG-APP-FEVER: @digitalcanopy/assets Tap Target & Countdown Adapt
 
     unsub();
   });
+
+  it('preserves database catalog rows across unforced subsequent calls', async () => {
+    const dbRows = [
+      {
+        id: 'seed-db-1',
+        app_scope: 'finger-fever',
+        category: 'particle_fx',
+        asset_key: 'fx-particle-starburst',
+        cdn_url: 'https://custom.sunshade.icu/db-starburst.png',
+        metadata: {},
+      },
+    ];
+    const mockSupabase = {
+      schema: () => ({
+        from: () => ({
+          select: () => ({
+            in: async () => ({ data: dbRows, error: null }),
+          }),
+        }),
+      }),
+      from: () => ({
+        select: () => ({
+          in: async () => ({ data: dbRows, error: null }),
+        }),
+      }),
+    };
+
+    const first = await hydrateFingerFeverCatalog(mockSupabase);
+    const second = await hydrateFingerFeverCatalog();
+    expect(first).toEqual(dbRows);
+    expect(second).toEqual(dbRows);
+    expect(resolveParticleSparkAsset().cdnUrl).toBe('https://custom.sunshade.icu/db-starburst.png');
+  });
 });
