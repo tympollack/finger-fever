@@ -4,6 +4,7 @@ import { ComboMeter, calculateMultiplier } from './ComboMeter';
 import { ScorePanel } from './ScorePanel';
 import { ParticleEmitter, ParticleEmitterHandle } from './ParticleEmitter';
 import { GesturePromptType, HitResult } from '../types';
+import { hydrateFingerFeverCatalog } from '../assets/assetManifest';
 
 interface TargetInstance {
   id: string;
@@ -89,6 +90,10 @@ export const ArcadeStage: React.FC = () => {
 
   const multiplier = calculateMultiplier(combo);
   const isFeverMode = combo >= 35;
+
+  useEffect(() => {
+    void hydrateFingerFeverCatalog();
+  }, []);
 
   const handleMiss = useCallback((targetId: string) => {
     if (handledTargetIdsRef.current.has(targetId)) return;
